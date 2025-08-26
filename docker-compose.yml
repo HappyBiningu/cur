@@ -1,0 +1,152 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  clamav:
+    image: clamav/clamav:latest
+    ports:
+      - "3310:3310"
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  gateway-api:
+    build: ./apps/gateway-api
+    environment:
+      - PORT=8000
+      - JWT_SECRET=${JWT_SECRET}
+    ports:
+      - "8080:8000"
+    depends_on:
+      - auth-svc
+      - classroom-svc
+      - submission-svc
+
+  auth-svc:
+    build: ./apps/auth-svc
+    environment:
+      - POSTGRES_URL=${POSTGRES_URL}
+      - JWT_SECRET=${JWT_SECRET}
+    ports:
+      - "8001:8000"
+    depends_on:
+      - postgres
+
+  classroom-svc:
+    build: ./apps/classroom-svc
+    environment:
+      - POSTGRES_URL=${POSTGRES_URL}
+      - JWT_SECRET=${JWT_SECRET}
+    ports:
+      - "8002:8000"
+    depends_on:
+      - postgres
+
+  file-svc:
+    build: ./apps/file-svc
+    environment:
+      - S3_ENDPOINT=${S3_ENDPOINT}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - S3_BUCKET=${S3_BUCKET}
+      - CLAMAV_HOST=${CLAMAV_HOST}
+    ports:
+      - "8003:8000"
+    depends_on:
+      - minio
+      - clamav
+
+  submission-svc:
+    build: ./apps/submission-svc
+    environment:
+      - POSTGRES_URL=${POSTGRES_URL}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - JWT_SECRET=${JWT_SECRET}
+    ports:
+      - "8004:8000"
+    depends_on:
+      - postgres
+      - rabbitmq
+
+  grading-orchestrator-svc:
+    build: ./apps/grading-orchestrator-svc
+    environment:
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - POSTGRES_URL=${POSTGRES_URL}
+    ports:
+      - "8005:8000"
+    depends_on:
+      - rabbitmq
+
+  nlp-essay-grader-svc:
+    build: ./apps/nlp-essay-grader-svc
+    ports:
+      - "8006:8000"
+
+  ocr-svc:
+    build: ./apps/ocr-svc
+    ports:
+      - "8007:8000"
+
+  math-checker-svc:
+    build: ./apps/math-checker-svc
+    ports:
+      - "8008:8000"
+
+  code-grader-svc:
+    build: ./apps/code-grader-svc
+    ports:
+      - "8009:8000"
+
+  plagiarism-svc:
+    build: ./apps/plagiarism-svc
+    ports:
+      - "8010:8000"
+
+  analytics-svc:
+    build: ./apps/analytics-svc
+    ports:
+      - "8011:8000"
+
+  notification-svc:
+    build: ./apps/notification-svc
+    environment:
+      - MAILHOG_HOST=${MAILHOG_HOST}
+      - MAILHOG_PORT=${MAILHOG_PORT}
+    ports:
+      - "8012:8000"
+
+volumes:
+  pgdata:
+  minio-data:
